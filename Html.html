@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>1ClixFix</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <img src="logo.png" alt="1ClixFix Logo" class="logo" />
+  </header>
+
+  <main>
+    <h1>Welcome to 1ClixFix</h1>
+    <p>Your one-click solution for home and business projects.</p>
+
+    <div class="buttons">
+      <button onclick="subscribe()">Subscribe Now</button>
+      <button onclick="book()">Book Now</button>
+    </div>
+  </main>
+
+  <script>
+    async function subscribe() {
+      const res = await fetch("/.netlify/functions/createPaymentLink", {
+        method: "POST",
+        body: JSON.stringify({
+          providerId: "demo_provider",
+          amountCents: 2099,
+          currency: "USD",
+          redirectUrl: window.location.origin + "/success.html"
+        })
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    }
+
+    function book() {
+      window.location.href = "/book.html"; // placeholder for next feature
+    }
+  </script>
+</body>
+</html>

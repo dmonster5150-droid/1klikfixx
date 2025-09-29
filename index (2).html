@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>1ClikFix — MVP</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;margin:16px;background:#f7f8fb;color:#111}
+  h1{color:#0b74de}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px;max-width:900px;margin:0 auto}
+  .card{background:white;padding:12px;border-radius:8px;box-shadow:0 6px 18px rgba(16,24,40,0.06)}
+  table{width:100%;border-collapse:collapse}
+  th,td{border:1px solid #eee;padding:8px;text-align:left}
+  th{background:#0b74de;color:#fff}
+  .btn{background:#0b74de;color:#fff;padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
+  .muted{color:#666;font-size:13px}
+  .status-open{background:#fff}
+  .status-inprogress{background:#fff3cd}
+  .status-completed{background:#d4edda}
+  .status-cancelled{background:#f8d7da}
+</style>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, getDocs, query, where, updateDoc, doc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+// ----- PASTE YOUR firebaseConfig HERE -----
+const firebaseConfig = {
+  apiKey: "AIzaSyDj2DowcTVx_1t9MV7yNVY6GSpDDnSiVdU",
+  authDomain: "clikfixproject.firebaseapp.com",
+  projectId: "clikfixproject",
+  storageBucket: "clikfixproject.firebasestorage.app",
+  messagingSenderId: "984485110022",
+  appId: "1:984485110022:web:dd0f6bb54fc9bccf3d3e87",
+  measurementId: "G-7CS5LFV3RK"
+};
+// ------------------------------------------
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Lightweight UI helpers
+function el(id){return document.getElementById(id)}
+
+function setText(id,txt){el(id).innerText = txt}
+
+// --------- Authentication (very simple) ---------
+async function clientRegister(){
+  const email = el('reg_email').value.trim();
+  const pass = el('reg_pass').value;
+  const name = el('reg_name').value.trim();
+  const phone = el('reg_phone').value.trim();
+  if(!email||!pass||!name){alert('enter name, email, password');return}
+  try{
+    const uc = await createUserWithEmailAndPassword(auth,email,pass);
+    const uid = uc.user.uid;
+    await addDoc(collection(db,'clients'),{uid,name,email,phone,created:Date.now()});
+    alert('Client registered — you can post jobs now');
+    el('reg_email').value='';el('reg_pass').value='';el('reg_name').value='';el('reg_phone').value='';
+  }catch(e){alert(e.message)}
+}
+
+async function providerRegisterToFirestore(providerRecord){
+  try{
+    await addDoc(collection(db,'providers'), providerRecord);
+  }catch(e){console.error(e)}
+}
+
+// --------- Jobs: post, render, claim, complete, rate, cancel ---------
+async function postJob(){
+  const clientUid = el('job_clientuid').value.trim();
+  const title = el('job_title').value.trim();
+  const desc = el('job_desc').value.trim();
+  const location = el('job_location').value.trim();
+  const price = Number(el('job_price').value);
+  const skill = el('job_skill').value.trim().toLowerCase();
+  if(!clientUid||!title||!desc||!location||!price){alert('fill required fields');return}
+  try{
+    await addDoc(collection(db,'jobs'), {clientUid,title,desc,location,price,skill,status:'open',providerId:'',rating:null,created:Date.now()});
+    alert('Job posted');
+    clearJobForm();
+    renderCalendar();
+  }catch(e){alert(e.message)}
+}
+
+function clearJobForm(){el('job_title').value='';el('job_desc').value='';el('job_location').value='';el('job_price').value='';}
+
+// render table for providers filtered by skill
+async function renderCalendar(){
+  const skill = el('calendar_skill').value.trim().toLowerCase();
+  const table = el('calendar_table');
+  table.innerHTML = '<tr><th>Job ID</th><th>Title</th><th>Location</th><th>Price</th><th>Status</th><th>Provider</th><th>Actions</th></tr>';
+  try{
+    let q;
+    if(skill) q = query(collection(db,'jobs'), where('skill','==',skill));
+    else q = query(collection(db,'jobs'));
+    const snap = await getDocs(q);
+    snap.forEach(docSnap=>{
+      const job = docSnap.data();
+      const id = docSnap.id;
+      const row = table.insertRow();
+      row.className = 'status-'+(job.status||'open').replace(/\s+/g,'').toLowerCase();
+      row.insertCell(0).innerText = id;
+      row.insertCell(1).innerText = (job.title||'') + '\n' + (job.desc||'');
+      row.insertCell(2).innerText = job.location || '-';
+      row.insertCell(3).innerText = '$'+(job.price||0);
+      row.insertCell(4).innerText = job.status || 'open';
+      row.insertCell(5).innerText = job.providerId || '-';
+      const actions = row.insertCell(6);
+      actions.innerHTML = '';
+      if(job.status==='open'){
+        const claim = document.createElement('button'); claim.className='btn'; claim.innerText='Claim'; claim.onclick = async ()=>{ await updateDoc(doc(db,'jobs',id), {providerId: el('provider_id').value || 'prov_unknown', status:'in progress'}); renderCalendar(); };
+        actions.appendChild(claim);
+      } else if(job.status==='in progress'){
+        const done = document.createElement('button'); done.className='btn'; done.innerText='Mark Completed'; done.onclick = async ()=>{ await updateDoc(doc(db,'jobs',id), {status:'completed'}); renderCalendar(); };
+        const cancel = document.createElement('button'); cancel.className='btn'; cancel.innerText='Cancel'; cancel.onclick = async ()=>{ if(confirm('Cancellation fee $50. Continue?')){ await updateDoc(doc(db,'jobs',id), {status:'cancelled'}); renderCalendar(); } };
+        actions.appendChild(done); actions.appendChild(cancel);
+      } else if(job.status==='completed' && job.rating===null){
+        const rate = document.createElement('button'); rate.className='btn'; rate.innerText='Rate'; rate.onclick = async ()=>{ const r = Number(prompt('Rate 1-5')); if(r>=1 && r<=5){ await updateDoc(doc(db,'jobs',id), {rating:r}); renderCalendar(); } };
+        actions.appendChild(rate);
+      } else {
+        actions.innerText = job.status + (job.rating?(' (Rated '+job.rating+')'):'')
+      }
+    });
+  }catch(e){console.error(e); alert('Failed to load jobs: '+e.message)}
+}
+
+// --------- Subscription flow (create payment link) ---------
+async function subscribeProvider(){
+  const providerId = 'prov_' + Date.now();
+  const name = el('prov_name').value.trim();
+  const email = el('prov_email').value.trim();
+  const skills = el('prov_skills').value.trim().toLowerCase();
+  if(!name||!email){alert('enter name & email');return}
+  try{ await providerRegisterToFirestore({providerId,name,email,skills,verified:false,created:Date.now()}); }catch(e){console.warn(e)}
+  try{
+    const res = await fetch('/.netlify/functions/createPaymentLink',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({providerId,amountCents:2099})});
+    const data = await res.json();
+    if(data && data.url){ window.location.href = data.url; }
+    else alert('Failed to create payment link');
+  }catch(e){alert('Payment link error: '+e.message)}
+}
+
+window.clientRegister = clientRegister;
+window.postJob = postJob;
+window.renderCalendar = renderCalendar;
+window.subscribeProvider = subscribeProvider;
+</script>
+</head>
+<body>
+  <div class="grid">
+    <div class="card">
+      <h1>1ClikFix — MVP</h1>
+      <p class="muted">Starter app. For production, secure your functions and add server-side verification.</p>
+    </div>
+    <div class="card">
+      <h2>Client — Register</h2>
+      <input id="reg_name" placeholder="Full name"><br><br>
+      <input id="reg_email" placeholder="Email"><br><br>
+      <input id="reg_phone" placeholder="Phone"><br><br>
+      <input id="reg_pass" placeholder="Password" type="password"><br><br>
+      <button class="btn" onclick="clientRegister()">Register (Client)</button>
+    </div>
+    <div class="card">
+      <h2>Post Job (Client)</h2>
+      <input id="job_clientuid" placeholder="Your UID from Firebase auth"><br><br>
+      <input id="job_title" placeholder="Job title"><br><br>
+      <textarea id="job_desc" placeholder="Detailed description"></textarea><br><br>
+      <input id="job_location" placeholder="Job address/city"><br><br>
+      <input id="job_price" placeholder="Price USD" type="number"><br><br>
+      <input id="job_skill" placeholder="Skill (handyman, plumbing, electrical)"><br><br>
+      <button class="btn" onclick="postJob()">Post Job</button>
+    </div>
+    <div class="card">
+      <h2>Provider — Subscribe & Register</h2>
+      <input id="prov_name" placeholder="Your full name"><br><br>
+      <input id="prov_email" placeholder="Email"><br><br>
+      <input id="prov_skills" placeholder="skills (comma separated)"><br><br>
+      <input id="provider_id" placeholder="Provider ID (will be assigned)"><br><br>
+      <button class="btn" onclick="subscribeProvider()">Subscribe ($20.99)</button>
+      <p class="muted">After payment, webhook will mark provider verified (server-side). Provider registration record is created before payment and updated after webhook.</p>
+    </div>
+    <div class="card">
+      <h2>Provider Calendar</h2>
+      <label>Filter by skill:</label> <input id="calendar_skill" placeholder="leave blank to show all">
+      <button class="btn" onclick="renderCalendar()">Refresh Calendar</button>
+      <table id="calendar_table"></table>
+    </div>
+  </div>
+</body>
+</html>

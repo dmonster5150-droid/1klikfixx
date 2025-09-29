@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1ClikFix Color Calendar</title>
+<style>
+  table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+  th { background-color: #4CAF50; color: white; }
+  button { margin: 3px; padding: 3px 8px; }
+  .status-open { background-color: #fff; }
+  .status-inprogress { background-color: #fff3cd; }
+  .status-completed { background-color: #d4edda; }
+  .status-cancelled { background-color: #f8d7da; }
+</style>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getFirestore, collection, getDocs, query, where, updateDoc, doc, addDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDj2DowcTVx_1t9MV7yNVY6GSpDDnSiVdU",
+  authDomain: "clikfixproject.firebaseapp.com",
+  projectId: "clikfixproject",
+  storageBucket: "clikfixproject.firebasestorage.app",
+  messagingSenderId: "984485110022",
+  appId: "1:984485110022:web:dd0f6bb54fc9bccf3d3e87",
+  measurementId: "G-7CS5LFV3RK"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+async function registerClient() {
+  const email = prompt("Enter email:");
+  const password = prompt("Enter password:");
+  const name = prompt("Enter full name:");
+  const phone = prompt("Enter phone:");
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    await addDoc(collection(db, "clients"), { uid: user.uid, name, email, phone });
+    alert("Client registered!");
+  } catch(err) { alert(err.message); }
+}
+
+async function postJob() {
+  const clientId = prompt("Enter your UID:");
+  const description = prompt("Describe job:");
+  const location = prompt("Job location:");
+  const price = parseInt(prompt("Price in USD:"),10);
+  const skill = prompt("Required skill (handyman/general contractor):");
+  try {
+    await addDoc(collection(db, "jobs"), {
+      clientId, description, location, price, skill,
+      timestamp: Date.now(), status: "open", providerId: "", rating: null
+    });
+    alert("Job posted!");
+    renderCalendar();
+  } catch(err) { alert(err.message); }
+}
+
+async function renderCalendar() {
+  const skill = prompt("Your skill to view jobs (handyman/general contractor):");
+  const q = query(collection(db, "jobs"), where("skill", "==", skill));
+  const snapshot = await getDocs(q);
+  const table = document.getElementById("calendar");
+  table.innerHTML = "<tr><th>Job ID</th><th>Description</th><th>Location</th><th>Price</th><th>Status</th><th>Provider</th><th>Actions</th></tr>";
+  
+  snapshot.forEach(docSnap => {
+    const job = docSnap.data();
+    const row = table.insertRow();
+    row.className = "status-" + job.status.replace(" ", "").toLowerCase();
+    row.insertCell(0).innerText = docSnap.id;
+    row.insertCell(1).innerText = job.description;
+    row.insertCell(2).innerText = job.location;
+    row.insertCell(3).innerText = "$" + job.price;
+    row.insertCell(4).innerText = job.status;
+    row.insertCell(5).innerText = job.providerId || "-";
+    const actionCell = row.insertCell(6);
+    actionCell.innerHTML = "";
+
+    if(job.status === "open") {
+      const claimBtn = document.createElement("button");
+      claimBtn.innerText = "Claim Job";
+      claimBtn.onclick = async () => {
+        const providerId = prompt("Enter your Provider ID:");
+        await updateDoc(doc(db, "jobs", docSnap.id), { providerId, status: "in progress" });
+        renderCalendar();
+      };
+      actionCell.appendChild(claimBtn);
+    } else if(job.status === "in progress") {
+      const completeBtn = document.createElement("button");
+      completeBtn.innerText = "Mark Completed";
+      completeBtn.onclick = async () => {
+        await updateDoc(doc(db, "jobs", docSnap.id), { status: "completed" });
+        renderCalendar();
+      };
+      const cancelBtn = document.createElement("button");
+      cancelBtn.innerText = "Cancel Job";
+      cancelBtn.onclick = async () => {
+        if(confirm("Cancelling charges $50 fee. Continue?")) {
+          await updateDoc(doc(db, "jobs", docSnap.id), { status: "cancelled" });
+          renderCalendar();
+        }
+      };
+      actionCell.appendChild(completeBtn);
+      actionCell.appendChild(cancelBtn);
+    } else if(job.status === "completed" && job.rating === null) {
+      const rateBtn = document.createElement("button");
+      rateBtn.innerText = "Rate Job";
+      rateBtn.onclick = async () => {
+        const rating = parseInt(prompt("Rate 1-5:"),10);
+        await updateDoc(doc(db, "jobs", docSnap.id), { rating });
+        renderCalendar();
+      };
+      actionCell.appendChild(rateBtn);
+    }
+  });
+}
+
+async function subscribeProvider() {
+  const providerId = "prov_" + Date.now();
+  const res = await fetch("/.netlify/functions/createPaymentLink", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ providerId, amountCents: 2099 })
+  });
+  const data = await res.json();
+  if(data.url) window.location.href = data.url;
+  else alert("Error creating payment link");
+}
+
+window.registerClient = registerClient;
+window.postJob = postJob;
+window.renderCalendar = renderCalendar;
+window.subscribeProvider = subscribeProvider;
+</script>
+</head>
+<body>
+<h1>1ClikFix Color Calendar</h1>
+<h2>Clients</h2>
+<button onclick="registerClient()">Register</button>
+<button onclick="postJob()">Post a Job</button>
+<h2>Providers</h2>
+<button onclick="subscribeProvider()">Subscribe $20.99</button>
+<button onclick="renderCalendar()">View Jobs Calendar</button>
+<table id="calendar"></table>
+</body>
+</html>

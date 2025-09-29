@@ -1,0 +1,12 @@
+{
+  "name": "1clixfix-site",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "echo 'This project is static; Netlify serves the files and deploys serverless functions'"
+  },
+  "dependencies": {
+    "square": "^17.0.0",
+    "firebase-admin": "^11.0.0"
+  }
+}

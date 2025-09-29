@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1ClikFix</title>
+<link rel="icon" href="/public/favicon.png">
+<style>
+body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f5f7fb}
+.header{background:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.06);padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+.container{max-width:900px;margin:40px auto;padding:20px}
+.hero{background:white;border-radius:12px;padding:40px;text-align:center;box-shadow:0 6px 24px rgba(16,24,40,0.06)}
+.btn{display:inline-block;padding:14px 22px;border-radius:10px;margin:6px 8px;border:none;cursor:pointer;font-weight:700}
+.btn-client{background:#0b74de;color:white}
+.btn-provider{background:#ff7a00;color:white}
+</style>
+</head>
+<body>
+<div class="header">
+  <img src="/public/logo-full.svg" style="height:56px">
+  <div style="display:flex;gap:12px">
+    <a href="/src/pages/Home.html" style="color:#333;text-decoration:none">Home</a>
+    <a href="/src/pages/ClientRegister.html" style="color:#333;text-decoration:none">Client</a>
+    <a href="/src/pages/ProviderSubscribe.html" style="color:#333;text-decoration:none">Provider</a>
+  </div>
+</div>
+<div class="container">
+  <div class="hero">
+    <img src="/public/logo-full.svg" style="height:78px;margin-bottom:10px">
+    <h1 id="title">Fix it fast with 1ClikFix</h1>
+    <p id="subtitle">Hire trusted local handymen and contractors with one click.</p>
+    <div id="buttons">
+      <button id="bookBtn" class="btn btn-client">Book Now</button>
+      <button id="subscribeBtn" class="btn btn-provider">Subscribe Now</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { firebaseConfig } from "/src/firebaseConfig.js";
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+async function loadSettings(){
+  try{
+    const ref = doc(db, "settings", "general");
+    const snap = await getDoc(ref);
+    if(snap.exists()){
+      const s = snap.data();
+      document.getElementById('bookBtn').innerText = (s.bookButtonText || 'Book Now') + " ($" + ((s.bookingPriceCents||1000)/100).toFixed(2) + ")";
+      document.getElementById('subscribeBtn').innerText = (s.subscribeButtonText || 'Subscribe Now') + " ($" + ((s.subscriptionPriceCents||2099)/100).toFixed(2) + ")";
+    } else {
+      document.getElementById('bookBtn').innerText = "Book Now ($10.00)";
+      document.getElementById('subscribeBtn').innerText = "Subscribe Now ($20.99)";
+    }
+  }catch(e){ console.warn('settings load failed', e); }
+}
+
+document.getElementById('bookBtn').addEventListener('click', ()=>{
+  window.location.href = '/src/pages/ClientRegister.html';
+});
+document.getElementById('subscribeBtn').addEventListener('click', ()=>{
+  window.location.href = '/src/pages/ProviderSubscribe.html';
+});
+
+loadSettings();
+</script>
+</body>
+</html>
